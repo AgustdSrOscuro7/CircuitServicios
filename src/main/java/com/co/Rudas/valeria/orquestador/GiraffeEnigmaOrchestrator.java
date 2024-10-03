@@ -1,4 +1,5 @@
 package com.co.Rudas.valeria.orquestador;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -12,11 +13,11 @@ public class GiraffeEnigmaOrchestrator {
 
     @Autowired
     public GiraffeEnigmaOrchestrator(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.build(); // Construimos el WebClient
+        this.webClient = webClientBuilder.build();
     }
 
     public Mono<String> solveEnigma() {
-        // Llamamos a los tres microservicios con el cuerpo de solicitud correcto
+        // Llamamos a los tres microservicios
         Mono<String> stepOne = getStep("http://localhost:8080/getStep",
                 "{\"data\": [{\"header\": {\"id\": \"12345\", \"type\": \"TestGiraffeRefrigerator\"}, " +
                         "\"enigma\": \"How to put giraffe into a refrigerator?\"}]}");
@@ -34,14 +35,22 @@ public class GiraffeEnigmaOrchestrator {
                 .map(tuple -> String.format(
                         "{\"data\": [{\"header\": {\"id\": \"12345\", \"type\": \"TestGiraffeRefrigerator\"}, " +
                                 "\"answer\": \"Step1: %s - Step2: %s - Step3: %s\"}]}",
-                        tuple.getT1(), tuple.getT2(), tuple.getT3()));
+                        tuple.getT1(), tuple.getT2(), tuple.getT3()))
+                .flatMap(result -> {
+                    // Llamada al webhook después de completar la orquestación
+                    return webClient.post()
+                            .uri("http://localhost:8083/webhook/receive")  // Ajusta el puerto según el webhook
+                            .retrieve()
+                            .bodyToMono(Void.class)
+                            .thenReturn(result); // Continúa con el flujo devolviendo el resultado final
+                });
     }
 
     private Mono<String> getStep(String url, String requestBody) {
         return webClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(requestBody) // Asegúrate de que el requestBody sea válido
+                .bodyValue(requestBody)
                 .retrieve()
                 .onStatus(status -> !status.is2xxSuccessful(), response -> {
                     // Manejo de errores HTTP
